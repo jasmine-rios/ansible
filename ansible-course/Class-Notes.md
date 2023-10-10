@@ -754,8 +754,357 @@ In the next section, we will talk about playbooks in action and use of Ansible f
 
 ### Playbooks in Action
 
+What does it take to construct a system using playbooks?
 
+We will break our system down in three parts: package management, configuration, and service handlers.
 
+1. **Package Management**
+What packages will our system need? 
+Install all packages needed to run our system.
+- patching
+- package management
 
+e.g. Example Playbook
+```yml
+---
+    - hosts: loadbalancers
+        tasks:
+            - name: Install apache
+                yum: name-httpd state=latest
+```
 
+What ansible will do is use the yum module to install latest version of Apache to loadbalancers.
+
+You can set state to different variables.
+You can set it to present or installed which will simply ensure that the desired package is installed. 
+You can use latest, which will update specific packages if it is not installed to the latest version.
+You can even specify the state to absent or remove, which will uninstall it from the system.
+State is not the only parameter you can set on the yum module.
+There are many other parameters you can set when executing modules. 
+Yum isn't the only package manager we can use with ansible, there is more like apt for ubuntu
+
+2. **Configure Intrastructure**
+Configure our system with necessary application files or configuration files that are needed to configure environment.
+- copy files
+- edit configuration files
+e.g. Example playbook
+```yml
+---
+    - hosts: loadbalancers
+        tasks:
+            - name: Copy config file
+                copy: src=./config.cfg dest=/etc/config.cfg
+    - hosts: wevservers
+        tasks: 
+            - name: Synchronize folers
+                synchronize: src=./app dest=/var/www/html/app
+
+```
+
+The first task we run is a simple copy module that copies a config file from our local Ansible setup to our load balancer in the etc diretory.
+So in another example, instead of just copying over a single file, you can copy over the entire contents of a folder by using the sychronize module.
+This will basically sync the two folders from your control machine to your inventory machine. 
+So as you are building out your own system, think about all the configuration changes that need to happen before your system is able to run. 
+This usually consists of copying some configuration file or maybe adding a single line to a configuration file, maybe just editing a property within a configuration file, but all of it can be taken care of using different modules ansibles offers to help configure your system. 
+
+So once we have our packages installed and once our sytem is configured, then we can start thinking about how we wanna start, stop, or restart our system when changes are made.
+Depending on what type of configuration changes you are making or what type of application builds you are applying, you may need to start, stop, or restart your system.
+
+3. **Service Handlers**
+Create service handlers to start, stop, our restart out system when changes are made.
+- command
+- service
+- handlers
+e.g. Example Playbook
+```yml
+---
+    - hosts: loadbalancers
+        tasks:
+            - name: Configure port number
+                lineinfile: path=/etc/config.cfg regexp='^port' line='port=80'
+                    notify: Restart apache
+            handlers: 
+                - name: Restart apache
+                    service: name=httpd status=restarted
+```
+We are making a simple configuration change to our config file here. 
+We use the lineinfile module which is great for just changing a single line in a file, to change the port number from whatever it is to port 80.
+And after those changes are made, we will use service handlers to notify to restart Apache.
+Using handlers in this way will allow us to restart our services only if changes are made.
+We could just write another task under the lineinfile module to always restart Apache.
+But in some cases, we don't wanna have to restart Apache.
+So if instance, if the configuration file already had port 80 in it, there would not be any changes made, therefore we would not have to restart Apache.
+Since Ansible knows how to keep up with changes, we can use service handlers to restart services, appropriately.
+Since we named our handler restart Apache, then we can just call notify: Restart apache within the lineinfile task.
+
+### Constructing System
+
+#### Playbooks in Action
+
+1. **Package Management**
+- apache
+- php
+
+2. Configure Infrastructure
+- upload index.php
+- configure php.ini
+- configure Load Balancer
+
+3. Service Handlers
+- restart services
+
+You can follow along in 04_03
+
+#### Run Yum-update.yml Playbook
+
+1. In VScode, create a playbook to update all of our inventory items.
+We will name it yum-update.yml
+
+2. Start off with comment
+
+`# yum-update.yml`
+
+3. Write our three dashes for playbook
+
+4. List out our hosts
+
+`  - hosts: webservers:loadbalancers`
+
+5. Tasks we will run is yum-update
+
+`       tasks:`
+`           - name: Updating yum packages `
+
+6. For the module, we will use the yum module and have it install all packages and the latest packages
+
+`        yum: name=* state=latest`
+
+7. Save and run the playbook in terminal
+
+`ansible-playbook playbooks/yum-update.yml`\
+
+There was error because we need to be root to perform an update
+Luckly Ansible allows us to esclate our permisions on the system by using the become directive.
+We can also use the become user if we want to set a specific user with desired privileges.
+
+8. Under hosts and the become property as true
+
+`   become:true`
+
+This basically tells Ansible that when running this playbook, run as sudo.
+
+9. Save and run the playbook.
+Now all three inventory items are up to date.
+
+When running earlier, and it failed. It created a retry file that says how many of our hosts where tried and failed.
+
+#### Change ansible.cfg to Delete Retry files
+
+1. In ansible.cfg, tell it to not create retry files.
+
+`retry_files_enabled = False`
+
+#### Rerun playbook
+
+1. Run the playbook again and we see that the status is ok but nothing has changed because Ansible knows it is up to date.
+
+#### Create a Playbook to Install Services
+
+1. Create a new playbook called install-services.yml
+
+2. Create a comment on top and follow by the dashes
+```yml
+# install-services.yml
+                       
+---
+```
+
+3. Start off by targeting our loadbalancers first with hosts
+`   - hosts: loadbalancers`
+
+4. Write a task to install apache
+
+5. Use the yum module to install apache
+
+`               yum: name=httpd state=present`
+
+Setting state to present means that if Apache is not present, install it.
+If present, don't install it.
+
+6. Set hosts as webservers and name of installing services. We can install httpd and php using same name.
+```yml
+    -hosts: webservers
+        tasks:
+            - name: Installing services
+                yum:
+                    name:
+                        - httpd
+                        - php
+                    state: present
+
+```
+
+7. Add become = true to run as root.
+
+8. Save and run the playbook.
+
+9. Now we want our playbook to start apache and make sure it starts up on reboot for both webservers and loadbalancer
+We can do this by making another tasks that starts apache
+Name it ensure apache starts and give the state as started and enabled as yes
+```yml
+            -name: Ensure apache starts
+                service: name=httpd state=started enabled=yes
+```
+
+10. Save the file and run the playbook
+
+#### Create a PHP file to have Apache serve it up
+
+1. Create a PHP file by creating a new file in the root of the directory and name it
+
+2. Within the file do an open and close php tag
+```php
+<?php
+
+?>
+```
+
+3. Within the tag, echo a simple html element.
+
+`echo "<h1>Hello, World! This is my Ansible page.<h1>";`
+
+4. Save the page and get this file from our local system to our webservers.
+
+5. Create another playbook called setup-app.yml. Write a comment for name of file and add dashes
+
+6. Name the hosts as webserver and name the task to copy our source file to our destination then give it permissions on the file
+
+```yml
+# setup-app.yml
+
+---
+    - hosts: webservers
+        tasks:
+            - name: Upload application file
+                copy:
+                    src: ../index.php
+                    dest: /var/www/html
+                    mode: 0755
+
+```
+
+7. Save it and run the playbook.
+We are not able to because we have to elevate our privileges by using become.
+
+8. Save the file and rerun the playbook.
+
+#### Check to see if File is being Served
+
+1. Go to a web browser and navigate to both of the ip addresses in the hosts-dev file.
+
+It works!
+
+#### Edit Single Line in a File
+
+We can do this by the module lineinfile.
+The file we will do this to is the php.ini file.
+We also want to make changes to allow for short open tags when writing php pages
+**NOTE** PHP documentation for tags doesn't recommend but we are doing it for demo for lineinfile module.
+
+1. In index.php, remove just the php and reupload it to the webserver
+
+2. Save and run the setup-app.yml playbook.
+
+3. Check to see changes in web browser for webservers. 
+See that the PHP complier doesn't know how to compile files that have an open php tag.
+
+4. To fix this we can set a property in the php.ini file that allows for short open tags.
+In setup-app.yml create another task named configure php.ini file
+
+`           - name: Configure php.ini file`
+
+5. Use the lineinfile modulevand specify a path to php.ini and use the parameter to find the lineinfile we want to change by using a regular expression, we do this by setting regex parameters with regexp
+```yml
+                lineinfile:
+                    path: /etc/php.ini
+                    regexp: ^short_open_tag
+```
+
+6. Specify now what changes we want to make on this line.
+Do this using the line parameter to set short_open_tag to on
+
+`                   line: 'short_open_tag=On`
+
+7. Once we make these changes in the configuration file we need to restart apache so the changes will take place.
+Create another task to restart apache
+```yml
+      - name: Restart apache
+        service: name=httpd state=restarted 
+```
+
+8. Save and run the playbook.
+
+9. Go to web browser and check and it is now pretty again. 
+
+10. Now check to see what our loadbalancer looks like now. This is default page for loadbalancer because we haven't configured it yet.
+
+### Configuring Load Balancer
+
+What have we already accomplished?
+
+1. **Package Management**
+- [x] apache
+- [x] php
+
+2. **Configure Infrastructure**
+- [x] upload index.php
+- [x] configure php.ini
+- [ ] configure Load Balancer
+
+3. **Service Handlers**
+- [ ] restart services
+
+Load Balancer Config File
+
+```yml
+...
+<Proxy>
+    BalancerMember http://<IP_ADDRESS>
+    BalancerMember http://<IP_ADDRESS>
+    ...
+    BalancerMember http://<IP_ADDRESS>
+</Proxy>
+...
+```
+
+We could create the file above and put it to our loadbalancer but its very static and not dynamic at all.
+What if we added more webservers all the time, we would have to keep adding them as balancermembers
+Instead we can loop through each one of our inventory items, webservers, and have them populate the config file before we upload it.
+Luckly, Ansible gives us templates to take care of use-cases like this.
+
+Load Balancer Config File (template)
+```yml
+...
+<Proxy>
+    {% loop through inventory}
+        BalancerMember http://{{ ip_address }}
+    {% endfor %}
+</Proxy>
+...
+```
+With this template we can loop through each one of our inventory items and have it populate the BalancerMember with the IP address.
+This makes our configuration much more dynamic so we are able to add more items to our webservers group and know that when we upload our configuration file to our load balancer, the new items will be propagated in configuration file for loadbalancer.
+
+The templating engine used is Jinja 2, now it is Jinja 3. Basically it's a templater to store variables as objects and looping.
+Using the Jinja syntax throughout your playbooks is going to create a more dynamic setup that allows you to use variables and make your playbooks more modular. 
+
+We will make a template file to accomplish this. Using the Load Balancer Template found in the README.md of this repo will make it easier. 
+
+#### Create template for Load Balancer Config
+
+1. Create a folder in the root directory of our repo and name it config.
+
+2. Create a new file within the config folder named lb-config.j2
+
+3. Copy and paste code from Github repository int lb-config.j2
 

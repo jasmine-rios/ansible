@@ -61,4 +61,6 @@ Domain Specific Language (DSL):
 - [The ansible Command](https://docs.ansible.com/ansible/latest/cli/ansible.html)
 - [Module Index](https://docs.ansible.com/ansible/2.9/modules/modules_by_category.html)
 - [Intro to Playbooks](https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html)
-- []()
+- [PHP Tags](https://www.php.net/manual/en/language.basic-syntax.phptags.php)
+- [Jinja 2] https://jinja.palletsprojects.com/en/3.1.x/
+- [Load Balancer Template](https://github.com/ACloudGuru-Resources/Course_Introduction_to_Ansible/blob/master/04_04_Introduction_To_Ansible/config/lb-config.j2)
