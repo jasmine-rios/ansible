@@ -338,7 +338,7 @@ Next to control add
 10. Save the hosts-dev file and run the same command again. 
 Nothing changes when running it again.
 
-## Ansible Configuration
+### Ansible Configuration
 
 Often we have the need to configure our local Ansible environment with global specific properties associated with out setup.
 
@@ -1108,3 +1108,194 @@ We will make a template file to accomplish this. Using the Load Balancer Templat
 
 3. Copy and paste code from Github repository int lb-config.j2
 
+4. Add the webservers IP to balance members.
+
+5. Now this can work but once we get more webservers we have to manually add so lets make it more modular with a loop
+Before Balancer memember line make a code snippet
+`{% for hosts in Groups ['webservers'] %}`
+
+6. End the loop after Balancers with
+
+`{% endof%}`
+
+7. Replace the IP address with double curly braces to define an expression in our template.Inside the braces is where you are going to evaluate the IP address for our web servers.
+We can find this by looking in the hostvars variable that Ansible creates during the gathering facts steps. 
+
+The `hostvars` holds a dictionary about our inventory. 
+Within the `hostvars` we can specify which web servers that we want to pull the IP address from.
+We can do that by saying get the element of `[hosts]` off of `hostvars`
+
+Then we can pull the variable `['ansible_host']` from the item of `[hosts]`.
+`['ansible_host']` will evaluate to the IP address associated with our web servers.
+
+
+`BalancerMember http://{{ hostvars[hosts]['ansible_host']}}`
+
+8. Now copy the option code into lb-config.j2 then save it.
+We are ready to upload `lb-config.j2` into our load balancer.
+
+9. To upload `lb-config.j2` into our load balancer, create a new playbook called `setup-lb.yml`
+
+10. Start with a comment
+
+`# setup-lb.yml`
+
+11. Call our hosts as loadbalancer
+
+`  - hosts: loadbalancers`
+
+12. Define our tasks
+
+`    tasks:`
+
+13. Give our first task a name
+
+`      - name: Creating Template`
+
+14. Call in the template module
+
+`        template:`
+
+15. Define the template parameters for src as the template file of the lb we just created
+
+`          src: ../config/lb-config.j2`
+
+16. Put the dest and then name the file lb.config
+`          dest: etc/httpd/conf.d/lb.conf`
+
+17. Set up the rest of the parameters to make sure the file has the correct permissions. 
+```yml
+          owner: bin
+          group: wheel
+          mode: 064
+```
+
+18. Now once that file is uploaded we want to have a task that restarts apache.
+```yml
+      - name: Restart Apache
+        service: name=httpd state=restarted
+```
+
+19. Make sure to be sudo to run these tasks. 
+`   become: true`
+
+20. Save and run the playbook
+`ansible-playbook playbook/setup-lb.yml`
+
+21. Now when going to the load balancer we are sent to our webservers
+We can also see info about our load balancer by going in the url to /balancer-manager
+
+### Service Handlers
+
+In this lesson we will use a service handler to restart services.
+
+In our current setup, whenever we upload a config file then apache restarts.
+This is okay if our config files change but what if our config files don't change?
+
+Service handlers detect if changes happened to the config file, if so it restarts apache.
+If it doesn't detect changes then the subsequent tasks do not run.
+
+e.g.
+Using Service Handlers
+
+```yml
+...
+    tasks: 
+        - name: Configure php.ini file
+            lineinfile:
+                path: /etc/php.ini
+                regexp: ^short_open_tag
+                line: 'short_open_tag=On'
+            notify: restart apache
+    handlers:
+        - name: restart apache
+            service: name=httpd state=restarted
+
+```
+Handlers in this example is only going to run if the notify parameters is set. 
+
+#### Set up Service Handlers
+
+1. In setup-app.yml we see with our current code that we are restarting apache no matter what.
+
+```yml
+      - name: Restart apache
+        service: name=httpd state=restarted 
+```
+Really we only want apache to restart when there is changes to the php.ini file
+
+2. Add a notify parameter to the lineinfile task
+
+`notify: Restart apache`
+
+3. Add handler to the Restart apache task.
+
+`    handlers:`
+
+4. Save and rerun the playbook.
+
+5. If we make changes to php.ini such as setting `'short_open_tag=On'` to `'short_open_tag=Off'` then apache will restart.
+Make the changes and run the playbook to see that apache restarts
+
+6. Change it back to `'short_open_tag=On'` and run the playbook.
+
+7. Make the changes in setup-lb.yml to use a handler. Run the playbook and apache is not restarted becasue we didn't make any change to Creating template.
+
+We now have everything we need to construct our system from start to finish.
+
+### Congregate Playbooks
+
+We are going to congregate all of the playbooks we created into a single playbook. 
+
+What we have finished for playbooks in action
+
+1. **Package Management**
+- [x] apache
+- [x] php
+
+2. **Configure Infrastructure**
+- [x] upload index.php
+- [x] configure php.ini
+- [x] configure Load Balancer
+
+3. **Service Handlers**
+- [x] restart services
+
+Example playbook of what we will accomplish
+
+```yml
+# all-playbooks.yml
+---
+    - import_playbook: yum-update.yml
+    - import_playbook: install-services.yml
+    - import_playbook: setup-app.yml
+    - import_playbook: setup-lb.yml
+```
+
+Running the above on our instances would not have changes but think if we had a blank instance with no changes, this would build out our system from scratch.
+
+#### Create all-playbooks.yml
+
+1. In playbooks, create a file named all-playbooks.yml
+
+2. Write a comment with the name and then the three lines to reference a playbook.
+
+`# all-playbooks.yml`
+
+3. Use the import_playbook feature to run each of our playbooks and start with yum.update playbook.
+
+`- import_playbook: yum.update.yml`
+
+4. Import the install services playbook that installs all of our Apache and PHP dependencies
+
+`- import_playbook: install-services.yml`
+
+5. Use our playbook that sets up our web server application file and configures it.
+
+`- import_playbook: setup-app.yml`
+
+6. Use our playbook that will set up our load balancer and configure it.
+
+`- import_playbook: setup-lb.yml`
+
+7. Save the playbook and run it
