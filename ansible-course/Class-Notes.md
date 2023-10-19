@@ -1298,4 +1298,56 @@ Running the above on our instances would not have changes but think if we had a 
 
 `- import_playbook: setup-lb.yml`
 
-7. Save the playbook and run it
+7. Save the playbook and run it.
+
+#### Create check-status.yml
+
+1. Create a new playbook that will check the status of apache.
+When it is run and returns a 0 then we know that Apache is up and running.
+Create a new playbook and name it check-status.yml
+
+2. Start with a comment and the 3 dashes
+
+`# check-status.yml`
+
+3. Run this against all of our web servers and load balancers
+
+`  - hosts: webservers:loadbalancers`
+
+4. Create a task that calls the command module to check the service off httpd status
+
+```yml
+    tasks:
+      - name: Check status of apache
+        command: service httpd status
+
+```
+
+5. Elevate your privileges to root
+
+`    become: true`
+
+6. Save and run the playbook.
+
+7. Take down apache on our loadbalancer and see what happens when we run check-status.yml.
+Run a simple adhoc command that stops apache on our load balancer
+
+`ansible -m service -a "name=httpd state=stopped" --become loadbalancers`
+
+Explanation of above command:
+-m means module and we call the service module.
+-a means that we are passing arguments of name and state to stop apache.
+--become to run this command as root.
+Then we are running the command against our loadbalancers.
+
+8. Run the playbook and we get a non-zero return code
+
+9. Run the adhoc command to start it then run the playbook again.
+
+`ansible -m service -a "name=httpd state=started" --become loadbalancers`
+
+10. Add the check.status.yml playbook to all playbooks.
+
+`  - import_playbook: check-status.yml`
+
+11. Run to make sure it runs as expected. 
